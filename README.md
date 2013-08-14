@@ -14,3 +14,5 @@ Without change, the script will search for the first video capture device and st
 # Haunting
 
 Shift will start recording video to out.avi.
+
+Arrow up and down will increase and decrease the threshold.

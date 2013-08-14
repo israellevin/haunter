@@ -8,18 +8,22 @@ import numpy as np
 from time import time
 
 ###
-hd=False
+camnum = 2
+while True:
+    print "Trying to access camera number %i" % (camnum)
+    cam = cv2.VideoCapture(camnum)
+    if cam.read()[0]: break
+    if camnum < 0: raise Exception('No camera found')
+    camnum -= 1
 
-if hd:
-    cam = cv2.VideoCapture(1)
-    cam.set(3, 1280)
-    cam.set(4, 720)
-else:
-    cam = cv2.VideoCapture(-1)
-
+cam.set(3, 1280)
+cam.set(4, 720)
 _, img = cam.read()
 height, width, depth = img.shape
-print "Got image %s" % (str(img.shape))
+print "Using camera %i with image %s" % (camnum, str(img.shape))
+
+def donot(img):
+    return False
 
 def show(img):
     return img
@@ -36,41 +40,57 @@ zoneheight, zonewidth = height, width / 2
 def recordzone(img):
     return record(img[0:zoneheight, 0:zonewidth])
 
-gpos = (zoneheight / 4, zonewidth / 4)
 def slim(img):
     img = cv2.pyrDown(img)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     _, _, img = cv2.split(img)
     return img
+base = slim(cam.read()[1])
 
 ###
-noise = 1
-bgs = cv2.BackgroundSubtractorMOG()
-def ghost(img):
-    global fnum, bgs, opac
+basenumber = 10
+def setbase(img):
+    global base
+    base = slim(img) / 10.0
+    for i in range(basenumber):
+        base = base + (slim(cam.read()[1]) / 10.0)
+    base = np.uint8(base)
+    step()
+    return False
 
+global th
+###
+th = 25
+def compare(img):
+    dif = cv2.absdiff(base, slim(img))
+    _, dif = cv2.threshold(dif, th, 255, cv2.THRESH_BINARY)
+    ker = cv2.getStructuringElement(cv2.MORPH_CROSS,(3,3))
+    dif = cv2.erode(dif, ker, iterations=3)
+    dif = cv2.dilate(dif, ker, iterations=6)
+    return dif
+
+###
+gpos = (zoneheight / 4, zonewidth / 4)
+noise = 1
+def ghost(img):
+    global fnum, opac
     fnum += 1
     frame = cv2.imread("ghost%03i.png" % (fnum))
     if frame is None:
         fnum = -1
-        return
-    ghost = img.copy()
-    ghost[0:zoneheight, 0:zonewidth] = frame
-
-    dif = bgs.apply(slim(img))
-    ker = cv2.getStructuringElement(cv2.MORPH_CROSS,(3,3))
-    dif = cv2.erode(dif, ker, iterations=2)
-    dif = cv2.dilate(dif, ker, iterations=2)
+        return False
 
     opac = 1
-    maxdist = zonewidth / 4.0
+    maxdist = zonewidth / 4
     mindist = maxdist
-    contours, _ = cv2.findContours(dif.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(compare(img), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     for c in contours:
         if cv2.contourArea(c) < noise: continue
         mindist = min(mindist, abs(cv2.pointPolygonTest(c, gpos, True)))
     opac = mindist / maxdist
 
+    ghost = img.copy()
+    ghost[0:zoneheight, 0:zonewidth] = frame
     img = cv2.addWeighted(img, 1 - opac, ghost, opac, 0)
     return img
 
@@ -90,23 +110,15 @@ def distance(p1, p2):
     y = p1[1] - p2[1]
     return ((x ** 2) + (y ** 2)) ** .5
 
-###
-th = 25
 def grad(img):
     global fnum
-
     fnum += 1
     ghost = cv2.imread("ghost%03i.png" % (fnum))
     if ghost is None:
         fnum = -1
         return False
 
-    dif = cv2.absdiff(base, slim(img))
-    _, dif = cv2.threshold(dif, th, 255, cv2.THRESH_BINARY)
-    ker = cv2.getStructuringElement(cv2.MORPH_CROSS,(3,3))
-    dif = cv2.erode(dif, ker, iterations=3)
-    dif = cv2.dilate(dif, ker, iterations=6)
-
+    dif = compare(img)
     contours, _ = cv2.findContours(dif.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     rects = [cv2.minAreaRect(c) for c in contours if cv2.contourArea(c) > noise]
 
@@ -118,18 +130,12 @@ def grad(img):
     img = np.uint8((img * dif) + ((1 - dif) * ghost))
     return img
 
-def setbase(img):
-    global bgs, base
-    bgs = cv2.BackgroundSubtractorMOG()
-    base = slim(img)
-    step()
-    return base
-
 ###
-funcs = [show, recordzone, show, setbase, ghost]
 funcs = [show, setbase, ghost]
-funcs = [show, setbase, grad]
+funcs = [show, setbase, compare]
+funcs = [show, recordzone, show, setbase, ghost]
 funcs = [show, record, show, setbase, grad]
+funcs = [show, setbase, grad]
 def step():
     global funcs
     funcs.append(funcs.pop(0))
@@ -138,14 +144,15 @@ def step():
 ###
 framecnt = 0
 cv2.namedWindow('out', 1)
+global recorder
 recorder = False
 stime = time()
+base = img
 while True:
     _, img = cam.read()
-    img = cv2.flip(img, 1)
     img = funcs[0](img)
     if not img is False:
-        cv2.imshow('out', img)
+        cv2.imshow('out', cv2.flip(img, 1))
         if(not recorder is False):
             recorder.write(img)
 
@@ -167,10 +174,15 @@ while True:
             step()
         elif 1114081 == k or 1114082 == k:
             if recorder is False:
-                global recorder
                 recorder = cv2.VideoWriter('out.avi', cv2.cv.FOURCC('M', 'J', 'P', 'G'), 25, (width, height))
                 print 'starting to record'
             else:
                 print 'already recording'
+        elif 1113938 == k:
+            th += 1
+            print "Threshold raised to %i" %(th)
+        elif 1113940 == k:
+            th -= 1
+            print "Threshold lowered to %i" %(th)
         else:
             print "unknown key %i" % (k)
