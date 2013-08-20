@@ -1,13 +1,15 @@
 #!/usr/bin/python
 #
 # Experimentation script.
-# Tubables are marked with triple hashes.
 #
+# Tubables are marked with triple hashes.
 import cv2
 import numpy as np
 from time import time
 
 ###
+camwidth = 640
+camheight = 480
 camnum = 2
 while True:
     print "Trying to access camera number %i" % (camnum)
@@ -16,8 +18,8 @@ while True:
     if camnum < 0: raise Exception('No camera found')
     camnum -= 1
 
-cam.set(3, 1280)
-cam.set(4, 720)
+cam.set(3, camwidth)
+cam.set(4, camheight)
 _, img = cam.read()
 height, width, depth = img.shape
 print "Using camera %i with image %s" % (camnum, str(img.shape))
@@ -29,88 +31,86 @@ def show(img):
     return img
 
 fnum = -1
-def record(img):
+def save(img):
     global fnum
     fnum += 1
     cv2.imwrite("ghost%03i.png" % (fnum), img)
     return img
 
 ###
-zoneheight, zonewidth = height, width / 2
-def recordzone(img):
-    return record(img[0:zoneheight, 0:zonewidth])
-
+downsample = 1
 def slim(img):
-    img = cv2.pyrDown(img)
+    for i in range(downsample):
+        img = cv2.pyrDown(img)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     _, _, img = cv2.split(img)
     return img
-base = slim(cam.read()[1])
 
 ###
-basenumber = 10
+basesize = 10
 def setbase(img):
     global base
-    base = slim(img) / 10.0
-    for i in range(basenumber):
-        base = base + (slim(cam.read()[1]) / 10.0)
+    base = 1.0 * slim(img) / basesize
+    for i in range(basesize - 1):
+        base += 1.0 * slim(cam.read()[1]) / basesize
     base = np.uint8(base)
     step()
     return False
 
-global th
 ###
 th = 25
+erodes = 6
+dilates = 6
 def compare(img):
     dif = cv2.absdiff(base, slim(img))
     _, dif = cv2.threshold(dif, th, 255, cv2.THRESH_BINARY)
-    ker = cv2.getStructuringElement(cv2.MORPH_CROSS,(3,3))
-    dif = cv2.erode(dif, ker, iterations=3)
-    dif = cv2.dilate(dif, ker, iterations=6)
+    ker = cv2.getStructuringElement(cv2.MORPH_CROSS,(5,5))
+    dif = cv2.erode(dif, ker, iterations=erodes)
+    dif = cv2.dilate(dif, ker, iterations=dilates)
     return dif
 
 ###
-gpos = (zoneheight / 4, zonewidth / 4)
-noise = 1
-def ghost(img):
-    global fnum, opac
-    fnum += 1
-    frame = cv2.imread("ghost%03i.png" % (fnum))
-    if frame is None:
-        fnum = -1
-        return False
-
-    opac = 1
-    maxdist = zonewidth / 4
-    mindist = maxdist
-    contours, _ = cv2.findContours(compare(img), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    for c in contours:
-        if cv2.contourArea(c) < noise: continue
-        mindist = min(mindist, abs(cv2.pointPolygonTest(c, gpos, True)))
-    opac = mindist / maxdist
-
-    ghost = img.copy()
-    ghost[0:zoneheight, 0:zonewidth] = frame
-    img = cv2.addWeighted(img, 1 - opac, ghost, opac, 0)
+aurasize = 100
+aurastep = 20
+aurafact = 255.0 / aurasize
+def gradcont(img, contours):
+    for i in range(1, 255, aurastep):
+        cv2.drawContours(img, contours, -1, i, int((255 - i) / aurafact))
+    cv2.drawContours(img, contours, -1, 255, -1)
+    for i in range(downsample):
+        img = cv2.pyrUp(img)
+    img = cv2.blur(img, (10, 10))
     return img
 
-def gradcont(img, contours):
-    for i in range(1, 200, 20):
-        cv2.drawContours(img, contours, -1, i, 80 - (i / 3))
-    cv2.drawContours(img, contours, -1, 255, -1)
-
-def gradrects(img, rects):
+def gradrects(img, contours):
+    rects = [cv2.minAreaRect(c) for c in contours if cv2.contourArea(c) > noise]
     rects = [np.int0(cv2.cv.BoxPoints(r)) for r in rects]
-    for i in range(1, 255, 15):
-        cv2.drawContours(img, rects, -1, i, 80 - (i / 3))
-    cv2.drawContours(img, rects, -1, 255, -1)
+    return gradcont(img, rects)
 
-def distance(p1, p2):
-    x = p1[0] - p2[0]
-    y = p1[1] - p2[1]
-    return ((x ** 2) + (y ** 2)) ** .5
+#FIXME ugly
+def gradellipses(img, contours):
+    ellipses = [cv2.fitEllipse(c) for c in contours if cv2.contourArea(c) > noise]
 
-def grad(img):
+    for i in range(1, 255, aurastep):
+        for e in ellipses:
+            cv2.ellipse(img, e, i, int((255 - i) / aurafact))
+    for e in ellipses:
+        cv2.ellipse(img, e, 255, -1)
+    for i in range(downsample):
+        img = cv2.pyrUp(img)
+    img = cv2.blur(img, (10, 10))
+    return img
+
+###
+noise = 25
+gradfuncs = [gradcont, gradrects, gradellipses]
+def mask(img):
+    dif = compare(img)
+    contours, _ = cv2.findContours(dif.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    dif = gradfuncs[0](dif, contours)
+    return dif
+
+def ghost(img):
     global fnum
     fnum += 1
     ghost = cv2.imread("ghost%03i.png" % (fnum))
@@ -118,24 +118,16 @@ def grad(img):
         fnum = -1
         return False
 
-    dif = compare(img)
-    contours, _ = cv2.findContours(dif.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    rects = [cv2.minAreaRect(c) for c in contours if cv2.contourArea(c) > noise]
-
-    gradrects(dif, rects)
-    dif = cv2.pyrUp(dif)
-    dif = cv2.blur(dif, (10, 10))
+    dif = mask(img)
     dif = dif / 255.0
     dif = cv2.merge((dif, dif, dif))
     img = np.uint8((img * dif) + ((1 - dif) * ghost))
     return img
 
 ###
+funcs = [show, setbase, compare, mask]
 funcs = [show, setbase, ghost]
-funcs = [show, setbase, compare]
-funcs = [show, recordzone, show, setbase, ghost]
-funcs = [show, record, show, setbase, grad]
-funcs = [show, setbase, grad]
+funcs = [show, save, show, setbase, compare, ghost]
 def step():
     global funcs
     funcs.append(funcs.pop(0))
@@ -166,7 +158,7 @@ while True:
             stime = ctime
 
     # Keyboard
-    k = cv2.waitKey(1)
+    k = cv2.waitKey(30)
     if -1 != k:
         if 27 == k or 1048603 == k:
             break
@@ -178,11 +170,15 @@ while True:
                 print 'starting to record'
             else:
                 print 'already recording'
-        elif 1113938 == k:
+        elif 65362 == k:
             th += 1
             print "Threshold raised to %i" %(th)
-        elif 1113940 == k:
+        elif 65364 == k:
             th -= 1
             print "Threshold lowered to %i" %(th)
+        elif 103 == k:
+            global gradfuncs
+            gradfuncs.append(gradfuncs.pop(0))
+            print "moving to %s" % (gradfuncs[0])
         else:
             print "unknown key %i" % (k)
