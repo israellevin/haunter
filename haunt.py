@@ -20,13 +20,11 @@ img = getimg()
 shape = height, width, depth = img.shape
 print "using camera %i with image %s" % (camnum, str(shape))
 
-ghostloader = cv2.VideoCapture('ghost.avi')
-def getghost():
-    global ghostloader
-    r, ghost = ghostloader.read()
-    if True == r : return ghost
-    ghostloader = cv2.VideoCapture('ghost.avi')
-    return getghost()
+def saveghost(img, fnum):
+    return cv2.imwrite("tmp/ghost%03i.png" % (fnum), img)
+
+def loadghost(fnum):
+    return cv2.imread("tmp/ghost%03i.png" % (fnum))
 
 downsample = 2
 def slim(img):
@@ -50,7 +48,6 @@ th = 20
 noise = 50
 blur = 10
 aurasize = 100
-#FIXME test higher steps
 aurasteps = 4
 alphamin = 255 % aurasteps
 alphastep = 255 / aurasteps
@@ -92,31 +89,42 @@ def updateimg():
     slimimg = slim(img)
     imgcnt += 1
 
+fnum = -1
+def updatesaveghost():
+    global fnum
+    fnum += 1
+    pool.apply_async(saveghost, (img, fnum))
+
+ghostresult = pool.apply_async(loadghost, (0,))
+ghost = img
+def updateloadghost():
+    global fnum, ghost, ghostresult, ghostcnt
+    fnum += 1
+    if(False == ghostresult.ready()): return
+    result = ghostresult.get()
+    if result is None:
+        fnum = 0
+    else:
+        ghost = result
+        ghostcnt += 1
+    ghostresult = pool.apply_async(loadghost, (fnum,))
+
 maskresult = pool.apply_async(getmask, (base, slimimg))
 mask = maskresult.get()
 def updatemask():
-    global mask, maskresult, maskcnt
     updateimg()
+    global mask, maskresult, maskcnt
     if(False == maskresult.ready()): return
     mask = maskresult.get()
     maskresult = pool.apply_async(getmask, (base, slimimg))
     maskcnt += 1
 
-ghostresult = pool.apply_async(getghost)
-ghost = ghostresult.get()
-def updateghost():
-    global ghost, ghostresult, ghostcnt
-    if(False == ghostresult.ready()): return
-    ghost = ghostresult.get()
-    ghostresult = pool.apply_async(getghost)
-    ghostcnt += 1
-
 blendresult = pool.apply_async(getblend, (img, ghost, mask))
 blend = blendresult.get()
 def updateblend():
-    global blend, blendresult, blendcnt
     updatemask()
-    updateghost()
+    updateloadghost()
+    global blend, blendresult, blendcnt
     if(False == blendresult.ready()): return
     blend = blendresult.get()
     blendresult = pool.apply_async(getblend, (img, ghost, mask))
@@ -127,34 +135,45 @@ def showframe(_):
     global out
     out = img
 
-def blendframe(_):
+def saveframe(_):
+    showframe(_)
+    updatesaveghost()
+
+def maskframe(_):
+    updatemask()
     global out
+    out[:,:,0] = mask
+    out[:,:,1] = mask
+    out[:,:,2] = mask
+
+def blendframe(_):
     updateblend()
+    global out
     out = blend
 
 import pyglet
 window = pyglet.window.Window(resizable=True)
 from time import time
 stime = time()
-imgcnt = maskcnt = ghostcnt = blendcnt = 0
+imgcnt = ghostcnt = maskcnt = blendcnt = 0
 out = img
 def display(_):
-    global stime, imgcnt, maskcnt, ghostcnt, blendcnt
+    global stime, imgcnt, ghostcnt, maskcnt, blendcnt
     ctime = time()
     if ctime - stime >= 1:
-        print '%.2f fps (%i frames, %i masks, %i ghosts, %i blends)' % (
-            pyglet.clock.get_fps(), imgcnt, maskcnt, ghostcnt, blendcnt
+        print '%.2f fps (%i captures, %i ghosts, %i masks, %i blends)' % (
+            pyglet.clock.get_fps(), imgcnt, ghostcnt, maskcnt, blendcnt
         )
-        imgcnt = maskcnt = ghostcnt = blendcnt = 0
+        imgcnt = ghostcnt = maskcnt = blendcnt = 0
         stime = ctime
 
-    #window.clear()
-    #outr = cv2.resize(out, (window.width, window.height))
-    #pyglet.image.ImageData(window.width, window.height, 'bgr', outr.tostring(), -1 * depth * window.width).blit(0, 0)
-    pyglet.image.ImageData(width, height, 'bgr', out.tostring(), -1 * depth * width).blit(0, 0)
+    window.clear()
+    pyglet.image.ImageData(width, height, 'bgr', cv2.flip(out, 1).tostring(), -1 * depth * width).blit(0, 0)
 
 def unsched():
     pyglet.clock.unschedule(showframe)
+    pyglet.clock.unschedule(saveframe)
+    pyglet.clock.unschedule(maskframe)
     pyglet.clock.unschedule(blendframe)
 
 frameinterval = 1.0 / 20
@@ -169,12 +188,20 @@ def on_key_press(symbol, modifiers):
     elif symbol == pyglet.window.key.D:
         unsched()
         pyglet.clock.schedule(showframe)
-        print 'showing cam'
+        print 'display cam'
+    elif symbol == pyglet.window.key.S:
+        unsched()
+        pyglet.clock.schedule(saveframe)
+        print 'saving ghosts'
+    elif symbol == pyglet.window.key.M:
+        unsched()
+        pyglet.clock.schedule(maskframe)
+        print 'showing mask'
     elif symbol == pyglet.window.key.G:
         unsched()
         pyglet.clock.schedule(blendframe)
         print 'showing ghosts'
-    elif symbol == pyglet.window.key.ESCAPE:
+    elif symbol in (pyglet.window.key.ESCAPE, pyglet.window.key.Q):
         print 'terminating processes',
         unsched()
         pool.close()
