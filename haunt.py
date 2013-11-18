@@ -1,11 +1,46 @@
 #!/usr/bin/python
 
+import cv2
+import numpy as np
+
+def getimg():
+    return cam.read()[1]
+
+def saveghost(img, fnum):
+    return cv2.imwrite("tmp/ghost%03i.png" % (fnum), img)
+
+def loadghost(fnum):
+    return cv2.imread("tmp/ghost%03i.png" % (fnum))
+
+def getmask(base, img):
+    mask = cv2.absdiff(base, img)
+    _, mask = cv2.threshold(mask, th, 255, cv2.THRESH_BINARY)
+    contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = [c for c in contours if cv2.contourArea(c) > noise]
+    alpha = alphamin
+    size = aurasize
+    for i in range(aurasteps):
+        alpha += alphastep
+        if 255 == alpha: size = -1
+        cv2.drawContours(mask, contours, -1, alpha, size)
+        size -= sizestep
+    mask = cv2.blur(mask, (blur, blur))
+    for i in range(downsample):
+        mask = cv2.pyrUp(mask)
+    return mask
+
+import Image
+def getblend(img1, img2, mask):
+    return np.asarray(Image.composite(
+        Image.fromarray(img1),
+        Image.fromarray(img2),
+        Image.fromarray(mask)
+    ))
+
+
 from multiprocessing import freeze_support
 if __name__ == '__main__':
     freeze_support()
-
-    import cv2
-    import numpy as np
 
     camnum = 2
     while True:
@@ -18,17 +53,9 @@ if __name__ == '__main__':
     camheight = 600
     cam.set(3, camwidth)
     cam.set(4, camheight)
-    def getimg():
-        return cam.read()[1]
     img = getimg()
     shape = height, width, depth = img.shape
     print "using camera %i with image %s" % (camnum, str(shape))
-
-    def saveghost(img, fnum):
-        return cv2.imwrite("tmp/ghost%03i.png" % (fnum), img)
-
-    def loadghost(fnum):
-        return cv2.imread("tmp/ghost%03i.png" % (fnum))
 
     downsample = 2
     def slim(img):
@@ -56,30 +83,6 @@ if __name__ == '__main__':
     alphamin = 255 % aurasteps
     alphastep = 255 / aurasteps
     sizestep = aurasize / (aurasteps - 1)
-    def getmask(base, img):
-        mask = cv2.absdiff(base, img)
-        _, mask = cv2.threshold(mask, th, 255, cv2.THRESH_BINARY)
-        contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        contours = [c for c in contours if cv2.contourArea(c) > noise]
-        alpha = alphamin
-        size = aurasize
-        for i in range(aurasteps):
-            alpha += alphastep
-            if 255 == alpha: size = -1
-            cv2.drawContours(mask, contours, -1, alpha, size)
-            size -= sizestep
-        mask = cv2.blur(mask, (blur, blur))
-        for i in range(downsample):
-            mask = cv2.pyrUp(mask)
-        return mask
-
-    import Image
-    def getblend(img1, img2, mask):
-        return np.asarray(Image.composite(
-            Image.fromarray(img1),
-            Image.fromarray(img2),
-            Image.fromarray(mask)
-        ))
 
     from multiprocessing import Pool
     pool = Pool()
