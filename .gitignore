@@ -1,0 +1,6 @@
+.*.swp
+*.pyc
+*$py.class
+hauntconfig.py
+tmp*/
+*.mkv

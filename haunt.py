@@ -1,4 +1,37 @@
 #!/usr/bin/python
+from glob import glob
+import datetime
+
+## TODO??? command line options
+import hauntconfig as conf
+
+class Syncher:
+    frameglob = ''
+    framerate = 1
+    av_offset = 0
+    frames = []
+    numframes = 0
+    reftime = None
+
+    def __init__(self, frameglob='tmp/*.png',
+        framerate=conf.FRAMERATE, av_offset=conf.AV_OFFSET):
+        self.frameglob = frameglob
+        self.framerate = framerate
+        self.av_offset = av_offset
+        self.frames = sorted(glob(frameglob))
+        self.numframes = len(self.frames)
+        self.reset_time()
+
+    def reset_time(self):
+        self.reftime = datetime.datetime.now()
+
+    def get_time(self):
+        return (datetime.datetime.now()-self.reftime).total_seconds()+self.av_offset
+
+    def get_frame(self):
+        return self.frames[int(self.get_time()*self.framerate)%self.numframes]
+
+syncher = Syncher()
 
 import cv2
 import numpy as np
@@ -7,10 +40,10 @@ def getimg():
     return cam.read()[1]
 
 def saveghost(img, fnum):
-    return cv2.imwrite("tmp/ghost%03i.png" % (fnum), img)
+    return cv2.imwrite("tmp/ghost%04i.png" % (fnum), img)
 
-def loadghost(fnum):
-    return cv2.imread("tmp/ghost%03i.png" % (fnum))
+def loadghost(syncher):
+    return cv2.imread(syncher.get_frame())
 
 def getmask(base, img):
     mask = cv2.absdiff(base, img)
@@ -49,8 +82,8 @@ if __name__ == '__main__':
         if cam.read()[0]: break
         if camnum < 0: raise Exception('No camera found')
         camnum -= 1
-    camwidth = 800
-    camheight = 600
+    camwidth = conf.CAMWIDTH
+    camheight = conf.CAMHEIGHT
     cam.set(3, camwidth)
     cam.set(4, camheight)
     img = getimg()
@@ -75,11 +108,11 @@ if __name__ == '__main__':
         base = slim(np.uint8(base))
     updatebase()
 
-    th = 20
-    noise = 50
-    blur = 10
-    aurasize = 100
-    aurasteps = 4
+    th = conf.THRESHOLD
+    noise = conf.NOISE
+    blur = conf.BLUR
+    aurasize = conf.AURASIZE
+    aurasteps = conf.AURASTEPS
     alphamin = 255 % aurasteps
     alphastep = 255 / aurasteps
     sizestep = aurasize / (aurasteps - 1)
@@ -101,8 +134,7 @@ if __name__ == '__main__':
         global fnum
         fnum += 1
         pool.apply_async(saveghost, (img, fnum))
-
-    ghostresult = pool.apply_async(loadghost, (0,))
+    ghostresult = pool.apply_async(loadghost, (syncher,))
     ghost = img
     def updateloadghost():
         global fnum, ghost, ghostresult, ghostcnt
@@ -114,7 +146,8 @@ if __name__ == '__main__':
         else:
             ghost = result
             ghostcnt += 1
-        ghostresult = pool.apply_async(loadghost, (fnum,))
+        global syncher
+        ghostresult = pool.apply_async(loadghost, (syncher,))
 
     maskresult = pool.apply_async(getmask, (base, slimimg))
     mask = maskresult.get()
@@ -206,6 +239,19 @@ if __name__ == '__main__':
             print 'showing mask'
         elif symbol == pyglet.window.key.G:
             unsched()
+
+            ###@@@ this didn't work :(
+            #OBTW requires https://avbin.github.io
+            #pyglet.options['audio'] = ('openal',) # or something
+            #player = pyglet.media.load('tmp/audio.mp3').play()
+            #...
+
+            ###@@@ this works, but meh
+            import subprocess
+            subprocess.Popen('killall mpg123',shell=True)
+            subprocess.Popen('mpg123 tmp/audio.mp3',shell=True)
+
+            syncher.reset_time()
             pyglet.clock.schedule(blendframe)
             print 'showing ghosts'
         elif symbol in (pyglet.window.key.ESCAPE, pyglet.window.key.Q):

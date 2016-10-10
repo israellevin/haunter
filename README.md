@@ -1,6 +1,15 @@
 haunter
 =======
 
+We no longer save frames. we shoot a video (e.g. with guvcview) then
+`./stripvid.sh somevid.mkv`
+
+You also need to `cp hauntconfig-example.py hauntconfig.py` and edit.
+
+To run: `./doit.sh`. See also `example.desktop` (for the ladies).
+
+----
+
 Computer vision tricks for a haunted house installation.
 
 Currently consists of a single python script for experimentation. Parameters are hard coded.

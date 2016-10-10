@@ -1,0 +1,7 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Exec=/PATH/TO/HAUNTER/FOLDER/doit.sh
+StartupNotify=true
+Terminal=true
+Name=Haunter
