@@ -1,37 +1,97 @@
 #!/usr/bin/python
 from glob import glob
 import datetime
+import wave
+import pyaudio
 
 ## TODO??? command line options
 import hauntconfig as conf
 
+
+class AudioPlayer:
+    audio = None
+    audiofile = ''
+    waveform = None
+    stream = None
+
+    def __init__(self, audiofile):
+        self.audio = pyaudio.PyAudio()
+        self.audiofile = audiofile
+        self.waveform = wave.open(self.audiofile, "rb")
+
+    def reset_time(self, percent=0):
+        self.waveform.setpos(
+            long(.01*percent*self.waveform.getnframes()))
+        print '{}%={}'.format(percent, float(self.waveform.tell())/self.waveform.getframerate())
+
+    def get_time(self):
+        return float(self.waveform.tell())/self.waveform.getframerate()
+
+    def audio_callback(self, in_data, frame_count, time_info, status):
+        if self.waveform.tell()>(self.waveform.getnframes()-frame_count):
+            self.reset_time()
+        data = self.waveform.readframes(frame_count)
+        return (data, pyaudio.paContinue)
+
+    def play(self):
+        self.audio_stream = self.audio.open(
+            format=self.audio.get_format_from_width(self.waveform.getsampwidth()),
+            channels=self.waveform.getnchannels(),
+            rate=self.waveform.getframerate(),
+            output=True,
+            stream_callback=self.audio_callback)
+        self.audio_stream.start_stream()
+
+    def close(self):
+        if self.audio_stream:
+            self.audio_stream.stop_stream()
+            self.audio_stream.close()
+            self.audio_stream = None
+        if self.waveform:
+            self.waveform.close()
+            self.waveform = None
+        if self.audio:
+            self.audio.terminate()
+            self.audio = None
+
+
 class Syncher:
     frameglob = ''
     framerate = 1
-    av_offset = 0
+    av_offset = 0.0
     frames = []
     numframes = 0
-    reftime = None
+    audio_player = None
 
-    def __init__(self, frameglob='tmp/*.png',
-        framerate=conf.FRAMERATE, av_offset=conf.AV_OFFSET):
+    def __init__(self, frameglob='tmp/*.png', framerate=conf.FRAMERATE,
+                 audiofile = 'tmp/audio.wav', av_offset=conf.AV_OFFSET):
         self.frameglob = frameglob
         self.framerate = framerate
         self.av_offset = av_offset
         self.frames = sorted(glob(frameglob))
         self.numframes = len(self.frames)
+        self.audio_player = AudioPlayer(audiofile)
         self.reset_time()
 
-    def reset_time(self):
-        self.reftime = datetime.datetime.now()
+    def reset_time(self, percent=0):
+        self.audio_player.reset_time(percent)
 
     def get_time(self):
-        return (datetime.datetime.now()-self.reftime).total_seconds()+self.av_offset
+        return self.audio_player.get_time()+self.av_offset
 
     def get_frame(self):
-        return self.frames[int(self.get_time()*self.framerate)%self.numframes]
+        return self.frames[
+            int(self.get_time()*self.framerate)%self.numframes]
+
+    def play_audio(self):
+        self.audio_player.play()
+
+    def close(self):
+        self.audio_player.close()
+
 
 syncher = Syncher()
+
 
 import cv2
 import numpy as np
@@ -42,8 +102,8 @@ def getimg():
 def saveghost(img, fnum):
     return cv2.imwrite("tmp/ghost%04i.png" % (fnum), img)
 
-def loadghost(syncher):
-    return cv2.imread(syncher.get_frame())
+def loadghost(frame):
+    return cv2.imread(frame)
 
 def getmask(base, img):
     mask = cv2.absdiff(base, img)
@@ -134,7 +194,7 @@ if __name__ == '__main__':
         global fnum
         fnum += 1
         pool.apply_async(saveghost, (img, fnum))
-    ghostresult = pool.apply_async(loadghost, (syncher,))
+    ghostresult = pool.apply_async(loadghost, (syncher.get_frame(),))
     ghost = img
     def updateloadghost():
         global fnum, ghost, ghostresult, ghostcnt
@@ -147,7 +207,7 @@ if __name__ == '__main__':
             ghost = result
             ghostcnt += 1
         global syncher
-        ghostresult = pool.apply_async(loadghost, (syncher,))
+        ghostresult = pool.apply_async(loadghost, (syncher.get_frame(),))
 
     maskresult = pool.apply_async(getmask, (base, slimimg))
     mask = maskresult.get()
@@ -219,7 +279,11 @@ if __name__ == '__main__':
     frameinterval = 1.0 / 20
     @window.event
     def on_key_press(symbol, modifiers):
-        if symbol == pyglet.window.key.SPACE:
+        if symbol >= pyglet.window.key._0 and \
+           symbol <= pyglet.window.key._9:
+           print "reset to {}%".format(10*(symbol-pyglet.window.key._0))
+           syncher.reset_time(10*(symbol-pyglet.window.key._0))
+        elif symbol == pyglet.window.key.SPACE:
             updatebase()
             print 'base frame set'
         elif symbol == pyglet.window.key.F:
@@ -240,23 +304,15 @@ if __name__ == '__main__':
         elif symbol == pyglet.window.key.G:
             unsched()
 
-            ###@@@ this didn't work :(
-            #OBTW requires https://avbin.github.io
-            #pyglet.options['audio'] = ('openal',) # or something
-            #player = pyglet.media.load('tmp/audio.mp3').play()
-            #...
-
-            ###@@@ this works, but meh
-            import subprocess
-            subprocess.Popen('killall mpg123',shell=True)
-            subprocess.Popen('mpg123 tmp/audio.mp3',shell=True)
-
             syncher.reset_time()
+            syncher.play_audio()
+            print 'playing audio'
             pyglet.clock.schedule(blendframe)
             print 'showing ghosts'
         elif symbol in (pyglet.window.key.ESCAPE, pyglet.window.key.Q):
             print 'terminating processes',
             unsched()
+            syncher.close()
             pool.close()
             pool.join()
             cam.release()
