@@ -1,8 +1,7 @@
 #!/usr/bin/python
-from glob import glob
-import datetime
 import wave
 import pyaudio
+from glob import glob
 
 ## TODO??? command line options
 import hauntconfig as conf
@@ -77,7 +76,9 @@ class Syncher:
         self.audio_player.reset_time(percent)
 
     def get_time(self):
-        return self.audio_player.get_time()+self.av_offset
+        now = self.audio_player.get_time()+self.av_offset
+        cam_cuesheet.tick(now)
+        return now
 
     def get_frame(self):
         return self.frames[
@@ -92,6 +93,45 @@ class Syncher:
 
 syncher = Syncher()
 
+class CueSheet:
+
+    def __init__(self, cuedict, callback):
+        assert cuedict.has_key(0), "No cue for 0"
+        self.current = None
+        self.callback = callback
+        self.cues = [(k, cuedict[k])
+                     for k in sorted(cuedict.keys(), reverse=True)]
+
+    def timestamp2cue(self, timestamp):
+        for when, what in self.cues:
+            if timestamp>=when:
+                return what
+
+    def range(self):
+        return set([c[1] for c in self.cues])
+
+    def trigger(self, cue):
+        self.callback(cue)
+        self.current = cue
+        print "  trigger {}".format(cue)
+
+    def tick(self, timestamp):
+        cue = self.timestamp2cue(timestamp)
+        if cue!=self.current:
+            print "at {}:".format(timestamp)
+            self.trigger(cue)
+
+from subprocess import Popen
+cam_cuesheet = CueSheet(
+    conf.CAM_CUESHEET,
+    lambda cfg: Popen("uvcdynctrl -L {}".format(cfg), shell=True))
+
+baseframes = {}
+def getbase():
+    return baseframes.get(
+        cam_cuesheet.current,
+        # __default__ gets initialized later on (as failsafe)
+        baseframes.get('__default__'))
 
 import cv2
 import numpy as np
@@ -160,13 +200,13 @@ if __name__ == '__main__':
     slimimg = slim(img)
 
     basesize = 10
-    def updatebase():
-        global base
-        base = np.zeros(img.shape)
+    def updatebase(cam_profile):
+        global baseframes
+        baseframes[cam_profile] = np.zeros(img.shape)
         for i in range(basesize):
-            base += 1.0 * getimg() / basesize
-        base = slim(np.uint8(base))
-    updatebase()
+            baseframes[cam_profile] += 1.0 * getimg() / basesize
+        baseframes[cam_profile] = slim(np.uint8(baseframes[cam_profile]))
+    updatebase('__default__')  # against evil eye
 
     th = conf.THRESHOLD
     noise = conf.NOISE
@@ -209,14 +249,14 @@ if __name__ == '__main__':
         global syncher
         ghostresult = pool.apply_async(loadghost, (syncher.get_frame(),))
 
-    maskresult = pool.apply_async(getmask, (base, slimimg))
+    maskresult = pool.apply_async(getmask, (getbase(), slimimg))
     mask = maskresult.get()
     def updatemask():
         updateimg()
         global mask, maskresult, maskcnt
         if(False == maskresult.ready()): return
         mask = maskresult.get()
-        maskresult = pool.apply_async(getmask, (base, slimimg))
+        maskresult = pool.apply_async(getmask, (getbase(), slimimg))
         maskcnt += 1
 
     blendresult = pool.apply_async(getblend, (img, ghost, mask))
@@ -284,8 +324,21 @@ if __name__ == '__main__':
            print "reset to {}%".format(10*(symbol-pyglet.window.key._0))
            syncher.reset_time(10*(symbol-pyglet.window.key._0))
         elif symbol == pyglet.window.key.SPACE:
-            updatebase()
-            print 'base frame set'
+            for i,profile in enumerate(cam_cuesheet.range()):
+                pyglet.clock.schedule_once(
+                    lambda *args, **kwargs:
+                        cam_cuesheet.trigger(profile),
+                    i+0.1)
+                pyglet.clock.schedule_once(
+                    lambda *args, **kwargs:
+                        updatebase(profile),
+                    i+1.0)
+            pyglet.clock.schedule_once(
+                lambda *args, **kwargs:
+                        cam_cuesheet.tick(0),
+                    len(cam_cuesheet.range()))
+            cam_cuesheet.tick(0)  # reset
+            print 'all base frames set.'
         elif symbol == pyglet.window.key.F:
             window.set_fullscreen(not window.fullscreen)
             print 'toggled fullscreen'
