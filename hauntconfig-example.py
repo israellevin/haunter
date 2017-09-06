@@ -10,9 +10,21 @@ AURASIZE = 80
 AURASTEPS = 4
 
 CAM_CUESHEET = {
-  0: "default.gpfl",
-  15: "color.gpfl",
-#  20: "default.gpfl",
-#  25: "grey.gpfl",
-  30: "default.gpfl"
+    0: "default.gpfl",
+    10: "color.gpfl",
+    20: "default.gpfl",
+#    25: "grey.gpfl",
+#    30: "default.gpfl"
 }
+
+LIGHT_ON = "http://192.168.1.132/arduino/digital/1"
+LIGHT_OFF = "http://192.168.1.132/arduino/digital/0"
+
+LIGHT_CUESHEET = {
+    0: LIGHT_OFF,
+    15: LIGHT_ON,
+    28: LIGHT_OFF
+}
+
+### osd doesn't work in full screen mode :(
+#CAPTION_CMD = 'aosd_cat -p 1 -x 0 -y 0 -e 1 -R "#ffefaf" -n "Alef Bold 32" -f 100 -o 100'

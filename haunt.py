@@ -1,4 +1,5 @@
 #!/usr/bin/python
+import os
 import wave
 import pyaudio
 from glob import glob
@@ -6,12 +7,14 @@ from glob import glob
 ## TODO??? command line options
 import hauntconfig as conf
 
+def beep():
+    os.popen4('play beep.wav')
 
 class AudioPlayer:
     audio = None
     audiofile = ''
     waveform = None
-    stream = None
+    audio_stream = None
 
     def __init__(self, audiofile):
         self.audio = pyaudio.PyAudio()
@@ -77,6 +80,7 @@ class Syncher:
 
     def get_time(self):
         now = self.audio_player.get_time()+self.av_offset
+        light_cuesheet.tick(now)
         cam_cuesheet.tick(now)
         return now
 
@@ -124,14 +128,28 @@ class CueSheet:
 from subprocess import Popen
 cam_cuesheet = CueSheet(
     conf.CAM_CUESHEET,
-    lambda cfg: Popen("uvcdynctrl -L {}".format(cfg), shell=True))
+    lambda arg: Popen("uvcdynctrl -L {}".format(arg), shell=True))
+
+import requests
+def get_url(u):
+    try:
+        return requests.get(u, allow_redirects=False)
+    except:
+        return None
+
+light_cuesheet = CueSheet(conf.LIGHT_CUESHEET, get_url)
 
 baseframes = {}
 def getbase():
     return baseframes.get(
-        cam_cuesheet.current,
+        (cam_cuesheet.current, light_cuesheet.current),
         # __default__ gets initialized later on (as failsafe)
         baseframes.get('__default__'))
+
+def reset_cuesheets():
+    cam_cuesheet.tick(0)
+    light_cuesheet.tick(0)
+    beep()
 
 import cv2
 import numpy as np
@@ -316,6 +334,7 @@ if __name__ == '__main__':
         pyglet.clock.unschedule(maskframe)
         pyglet.clock.unschedule(blendframe)
 
+
     frameinterval = 1.0 / 20
     @window.event
     def on_key_press(symbol, modifiers):
@@ -324,19 +343,26 @@ if __name__ == '__main__':
            print "reset to {}%".format(10*(symbol-pyglet.window.key._0))
            syncher.reset_time(10*(symbol-pyglet.window.key._0))
         elif symbol == pyglet.window.key.SPACE:
-            for i,profile in enumerate(cam_cuesheet.range()):
+            ncams = len(cam_cuesheet.range())
+            nlights = len(light_cuesheet.range())
+            for i, cam_state in enumerate(cam_cuesheet.range()):
                 pyglet.clock.schedule_once(
-                    lambda *args, **kwargs:
-                        cam_cuesheet.trigger(profile),
-                    i+0.1)
-                pyglet.clock.schedule_once(
-                    lambda *args, **kwargs:
-                        updatebase(profile),
-                    i+1.0)
+                    lambda _, cs = cam_state:
+                        cam_cuesheet.trigger(cs),
+                    nlights*i+0.1)
+                for j, light_state in enumerate(light_cuesheet.range()):
+                    pyglet.clock.schedule_once(
+                        lambda _, ls=light_state:
+                            light_cuesheet.trigger(ls),
+                        nlights*i+j+0.5)
+                    pyglet.clock.schedule_once(
+                        lambda _, cs=cam_state, ls=light_state:
+                            updatebase((cs, ls)),
+                        nlights*i+j+0.9)
             pyglet.clock.schedule_once(
-                lambda *args, **kwargs:
-                        cam_cuesheet.tick(0),
-                    len(cam_cuesheet.range()))
+                lambda _:
+                        reset_cuesheets(),
+                        nlights*ncams+1)
             cam_cuesheet.tick(0)  # reset
             print 'all base frames set.'
         elif symbol == pyglet.window.key.F:
@@ -369,6 +395,7 @@ if __name__ == '__main__':
             pool.close()
             pool.join()
             cam.release()
+            beep()
             pyglet.app.exit()
 
     pyglet.clock.schedule(display)
