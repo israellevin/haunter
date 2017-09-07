@@ -82,6 +82,7 @@ class Syncher:
         now = self.audio_player.get_time()+self.av_offset
         light_cuesheet.tick(now)
         cam_cuesheet.tick(now)
+        ghost_cuesheet.tick(now)
         return now
 
     def get_frame(self):
@@ -138,6 +139,8 @@ def get_url(u):
         return None
 
 light_cuesheet = CueSheet(conf.LIGHT_CUESHEET, get_url)
+
+ghost_cuesheet = CueSheet(conf.GHOST_CUESHEET, lambda x: None)
 
 baseframes = {}
 def getbase():
@@ -307,7 +310,10 @@ if __name__ == '__main__':
     def blendframe(_):
         updateblend()
         global out
-        out = blend
+        if ghost_cuesheet.current=='blend':
+            out = blend
+        else:
+            out = ghost
 
     import pyglet
     window = pyglet.window.Window(resizable=True)

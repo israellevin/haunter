@@ -26,5 +26,11 @@ LIGHT_CUESHEET = {
     28: LIGHT_OFF
 }
 
+GHOST_CUESHEET = {
+    0: 'blend',
+   20: 'source',
+   23: 'blend'
+}
+
 ### osd doesn't work in full screen mode :(
 #CAPTION_CMD = 'aosd_cat -p 1 -x 0 -y 0 -e 1 -R "#ffefaf" -n "Alef Bold 32" -f 100 -o 100'
