@@ -4,7 +4,6 @@ import wave
 import pyaudio
 from glob import glob
 
-## TODO??? command line options
 import hauntconfig as conf
 
 def beep():
@@ -346,9 +345,11 @@ if __name__ == '__main__':
     def on_key_press(symbol, modifiers):
         if symbol >= pyglet.window.key._0 and \
            symbol <= pyglet.window.key._9:
-           print "reset to {}%".format(10*(symbol-pyglet.window.key._0))
-           syncher.reset_time(10*(symbol-pyglet.window.key._0))
+            print "reset to {}%".format(10*(symbol-pyglet.window.key._0))
+            syncher.reset_time(10*(symbol-pyglet.window.key._0))
         elif symbol == pyglet.window.key.SPACE:
+            unsched()
+            pyglet.clock.schedule(showframe)
             ncams = len(cam_cuesheet.range())
             nlights = len(light_cuesheet.range())
             for i, cam_state in enumerate(cam_cuesheet.range()):
