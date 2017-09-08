@@ -35,6 +35,8 @@ Keyboard commands:
 
 ### WifiSwitch
 
-Hardware (see the `arduino` folder) that turns
+Hardware (see the `Arduino` folder) that switches
 an AC socket on/off (used for lighting).
 `LIGHT_CUESHEET` at `hauntconfig.py` controls the timing.
+
+![WiFiSwitch](https://github.com/israellevin/haunter/raw/production/Arduino/WiFiSwitch.jpg)
