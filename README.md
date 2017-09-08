@@ -1,37 +1,40 @@
-haunter
-=======
+## Haunter
 
-We no longer save frames. we shoot a video (e.g. with guvcview) then
-`./stripvid.sh somevid.mkv`
+Computer vision tricks for a "haunted house" installation.
 
-You also need to `cp hauntconfig-example.py hauntconfig.py` and edit.
+A preset source video gets blended with live camera
+(shooting the same background) only where the image
+differs from the base frame. This makes people in
+the frame "ghost out" the people in the source video.
 
-To run: `./doit.sh`. See also `example.desktop` (for the ladies).
+### Configuration
 
-----
+`cp hauntconfig-example.py hauntconfig.py` and edit.
 
-Computer vision tricks for a haunted house installation.
+### Preprocessing (source video/audio)
 
-Currently consists of a single python script for experimentation. Parameters are hard coded.
+* Shoot a video (e.g. with guvcview)
+* `./stripvid.sh YOURVIDEO.mkv`
 
-Without change, the script will search for the first video capture device and start capturing, reporting the image size
-once and the number of frames processed every second. Pressing the space bar will advance the script through the
-following modes:
+### Running
 
-1. show - show live mirror
-2. save - save frames for ghost video
-3. show - show live mirror
-4. setbase - set base image (auto advances after averaging 10 frames)
-5. compare - show comparison of current frame to base image (for threshold fine-tuning)
-6. ghost - blend live and ghost video)
+Run `./doit.sh` (see also `example.desktop` [for the ladies]).
 
-Pressing arrow up and down will increase and decrease the threshold accordingly.
+Keyboard commands:
 
-Pressing g will change grad function.
+* `f`: Toggle full screen.
+* `space` (while scene is empty): Capture baseframe for all possible
+  cam profiles with/without light (see WiFiSwitch). Beeps when done.
+* `g`: Start "ghosting" (blending source video with cam).
+       Pressing up/down arrows will increase and decrease the
+       threshold accordingly.
+* `0`,`1`,...,`9`: Jump to 0%,10%,...,90% of source video timeline.
+* `m`: View the blending mask.
+* `d`: Display cam image.
+* `q`: Quit.
 
-Pressing the shift key will start recording video to out.avi.
+### WifiSwitch
 
-Other available functions (set with the funcs variable):
-* donot - does nothing, for testing
-* slim - show downsampled value map
-* mask - show the blending mask
+Hardware (see the `arduino` folder) that turns
+an AC socket on/off (used for lighting).
+`LIGHT_CUESHEET` at `hauntconfig.py` controls the timing.
