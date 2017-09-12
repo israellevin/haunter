@@ -22,7 +22,7 @@
 #include <Wire.h>
 #include <UnoWiFiDevEd.h>
 
-#define SWITCH_PIN 13
+#define SWITCH_PIN 12
 int state = LOW;
 
 void setup() {
