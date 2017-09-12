@@ -137,7 +137,22 @@ def get_url(u):
     except:
         return None
 
-light_cuesheet = CueSheet(conf.LIGHT_CUESHEET, get_url)
+from serial import Serial
+from serial.tools.list_ports import comports
+
+serial_switch = None
+serialports = [c.device for c in comports()]
+if serialports:
+    print "Serial ports: {}".format(serialports)
+    serial_switch = Serial(serialports[0])
+
+def do_switch(u):
+    if serial_switch: # prefer serial
+        serial_switch.write(u[-1])
+    else: # try wifi instead
+        get_url(u)
+
+light_cuesheet = CueSheet(conf.LIGHT_CUESHEET, do_switch)
 
 ghost_cuesheet = CueSheet(conf.GHOST_CUESHEET, lambda x: None)
 
@@ -220,12 +235,12 @@ if __name__ == '__main__':
     slimimg = slim(img)
 
     basesize = 10
-    def updatebase(cam_profile):
+    def updatebase(state):
         global baseframes
-        baseframes[cam_profile] = np.zeros(img.shape)
+        baseframes[state] = np.zeros(img.shape)
         for i in range(basesize):
-            baseframes[cam_profile] += 1.0 * getimg() / basesize
-        baseframes[cam_profile] = slim(np.uint8(baseframes[cam_profile]))
+            baseframes[state] += 1.0 * getimg() / basesize
+        baseframes[state] = slim(np.uint8(baseframes[state]))
     updatebase('__default__')  # against evil eye
 
     th = conf.THRESHOLD
@@ -356,21 +371,23 @@ if __name__ == '__main__':
                 pyglet.clock.schedule_once(
                     lambda _, cs = cam_state:
                         cam_cuesheet.trigger(cs),
-                    nlights*i+0.1)
+                    2*(nlights*i+0.1))
                 for j, light_state in enumerate(light_cuesheet.range()):
                     pyglet.clock.schedule_once(
                         lambda _, ls=light_state:
                             light_cuesheet.trigger(ls),
-                        nlights*i+j+0.5)
+                        2*(nlights*i+j+0.5))
                     pyglet.clock.schedule_once(
                         lambda _, cs=cam_state, ls=light_state:
                             updatebase((cs, ls)),
-                        nlights*i+j+0.9)
+                        2*(nlights*i+j+0.9))
             pyglet.clock.schedule_once(
                 lambda _:
                         reset_cuesheets(),
-                        nlights*ncams+1)
-            cam_cuesheet.tick(0)  # reset
+                        2*(nlights*ncams+1))
+            # reset cam and light
+            cam_cuesheet.tick(0) 
+            light_cuesheet.tick(0)
             print 'all base frames set.'
         elif symbol == pyglet.window.key.F:
             window.set_fullscreen(not window.fullscreen)

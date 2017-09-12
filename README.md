@@ -39,4 +39,8 @@ Hardware (see the `Arduino` folder) that switches
 an AC socket on/off (used for lighting).
 `LIGHT_CUESHEET` at `hauntconfig.py` controls the timing.
 
+Note: if arduino is connected via serial (9600 bd), you can
+send it '1' to turn switch on, and '0' [or anything else] to turn it off.
+`haunt.py` prefers serial over wifi (faster response, no setup hassle).
+
 ![WiFiSwitch](https://github.com/israellevin/haunter/raw/production/Arduino/WiFiSwitch.jpg)

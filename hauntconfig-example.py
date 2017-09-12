@@ -17,6 +17,9 @@ CAM_CUESHEET = {
 #    30: "default.gpfl"
 }
 
+# Note: if a serial device is present, only the LAST character of the URL
+# (1 or 0) is sent via serial and NO http is attempted.
+# [much faster response than wifi, and less setup hassle]
 LIGHT_ON = "http://192.168.1.132/arduino/digital/1"
 LIGHT_OFF = "http://192.168.1.132/arduino/digital/0"
 

@@ -1,15 +1,22 @@
 /*
   WiFiSwitch.ino
 
-  Switch an AC power socket via web.
-
+  Switch an AC power socket via web [or serial].
+  Note: works only with Arduino Uno WiFi Developer Edition.
+  
   Circuit: connect an AC relay to [Gnd, 5V, and] SWITCH_PIN. Easy.
 
+  Control via WiFi:
+  
   * http://<IP>/arduino/webserver/ for "GUI".
   * http://<IP>/arduino/digital/1 to turn AC switch on.
   * http://<IP>/arduino/digital/0 to turn AC switch off.
 
-  Note: works only with Arduino Uno WiFi Developer Edition.
+  Control via serial (9600 bd):
+  
+  * send '1' to turn AC switch on
+  * send any other char to turn AC switch on
+
 */
 
 #include <Wire.h>
@@ -21,11 +28,15 @@ int state = LOW;
 void setup() {
   pinMode(SWITCH_PIN, OUTPUT);
   digitalWrite(SWITCH_PIN, state);
+  Serial.begin(9600);
   Wifi.begin();
   Wifi.println("Web Server is up");
 }
 void loop() {
-
+  if (Serial.available()) {
+    DoSwitch(Serial.read()=='1');
+    Serial.flush();
+  }
   while (Wifi.available()) {
     process(Wifi);
   }
@@ -41,35 +52,37 @@ void process(WifiData client) {
   if (command == "webserver") {
     WebServer(client);
   } else if (command == "digital") {
-    DoSwitch(client);
+    DoSwitch(client.parseInt());
+    client.println(F("HTTP/1.1 303 See Other"));
+    client.println(F("Location: /arduino/webserver\n"));
   }
 }
 
 void WebServer(WifiData client) {
 
-  client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: text/html");
-  client.println("Connection: close");
+  client.println(F("HTTP/1.1 200 OK"));
+  client.println(F("Content-Type: text/html"));
+  client.println(F("Connection: close"));
   client.println();
-  client.println("<html>");
+  client.println(F("<html>"));
 
-  client.println("<head><title>WiFiSwitch</title></head>");
-  client.print("<body>");
-  client.print("<h3>Switch is ");
-  client.print(state? "on": "off");
-  client.println("</h3>");
+  client.println(F("<head><title>WiFiSwitch</title></head>"));
+  client.print(F("<body>"));
+  client.print(F("<h3>Switch is "));
+  client.print(state? F("on"): F("off"));
+  client.println(F("</h3>"));
   
-  client.println("<a href='/arduino/digital/1'>On</a>");
-  client.println("<a href='/arduino/digital/0'>Off</a>");
-  client.println("</html>");
+  client.println(F("<a href='/arduino/digital/1'>On</a>"));
+  client.println(F("<a href='/arduino/digital/0'>Off</a>"));
+  client.println(F("</html>"));
   client.print(DELIMITER); // very important to end the communication !!!
 
 }
 
-void DoSwitch(WifiData client) {
-  int value = client.parseInt();
-  digitalWrite(SWITCH_PIN, value);
-  state = value;
-  client.println("HTTP/1.1 303 See Other");
-  client.println("Location: /arduino/webserver\n");
+void DoSwitch(int value) {
+  if (value!=state) {
+    digitalWrite(SWITCH_PIN, value);
+    state = value;
+    //Serial.write(state? "On\n": "Off\n");
+  }
 }
