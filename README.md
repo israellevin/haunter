@@ -42,5 +42,7 @@ an AC socket on/off (used for lighting).
 Note: if arduino is connected via serial (9600 bd), you can
 send it '1' to turn switch on, and '0' [or anything else] to turn it off.
 `haunt.py` prefers serial over wifi (faster response, no setup hassle).
+You can use `serial.sh` in order to test the switch manually
+(1[+enter] to select the port, then type 1 or 0 to control the switch).
 
 ![WiFiSwitch](https://github.com/israellevin/haunter/raw/production/Arduino/WiFiSwitch.jpg)

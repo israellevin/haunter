@@ -141,10 +141,12 @@ from serial import Serial
 from serial.tools.list_ports import comports
 
 serial_switch = None
-serialports = [c.device for c in comports()]
+serialports = [
+    # Only duinos
+    (c.device, c.description) for c in comports() if c.description.find('dui')>=0]
 if serialports:
-    print "Serial ports: {}".format(serialports)
-    serial_switch = Serial(serialports[0])
+    print "`duino device(s): {}".format(serialports)
+    serial_switch = Serial(serialports[0][0])
 
 def do_switch(u):
     if serial_switch: # prefer serial
