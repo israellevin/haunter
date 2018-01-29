@@ -43,11 +43,14 @@ class AudioPlayer:
             stream_callback=self.audio_callback)
         self.audio_stream.start_stream()
 
-    def close(self):
+    def stop(self):
         if self.audio_stream:
             self.audio_stream.stop_stream()
             self.audio_stream.close()
             self.audio_stream = None
+
+    def close(self):
+        self.stop()
         if self.waveform:
             self.waveform.close()
             self.waveform = None
@@ -90,6 +93,9 @@ class Syncher:
 
     def play_audio(self):
         self.audio_player.play()
+
+    def stop(self):
+        self.audio_player.stop()
 
     def close(self):
         self.audio_player.close()
@@ -147,6 +153,7 @@ serialports = [
 if serialports:
     print "`duino device(s): {}".format(serialports)
     serial_switch = Serial(serialports[0][0])
+
 
 def do_switch(u):
     if serial_switch: # prefer serial
@@ -351,6 +358,7 @@ if __name__ == '__main__':
         pyglet.image.ImageData(width, height, 'bgr', cv2.flip(out, 1).tostring(), -1 * depth * width).blit(0, 0)
 
     def unsched():
+        syncher.stop()
         pyglet.clock.unschedule(showframe)
         pyglet.clock.unschedule(saveframe)
         pyglet.clock.unschedule(maskframe)
