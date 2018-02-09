@@ -4,3 +4,4 @@
 hauntconfig.py
 tmp*/
 *.mkv
+venv/

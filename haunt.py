@@ -6,6 +6,8 @@ from glob import glob
 
 import hauntconfig as conf
 
+
+
 def beep():
     os.popen4('play beep.wav')
 
@@ -180,8 +182,16 @@ def reset_cuesheets():
 import cv2
 import numpy as np
 
+if conf.VIDHEIGHT>conf.CAMHEIGHT:
+    top_bar = np.zeros((conf.VIDHEIGHT-conf.CAMHEIGHT, conf.CAMWIDTH, 3), np.uint8)
+else:
+    top_bar = None
+
 def getimg():
-    return cam.read()[1]
+    capture = cam.read()[1]
+    if top_bar is None:
+        return capture
+    return np.concatenate((top_bar,capture), axis=0) 
 
 def saveghost(img, fnum):
     return cv2.imwrite("tmp/ghost%04i.png" % (fnum), img)
@@ -339,7 +349,9 @@ if __name__ == '__main__':
             out = ghost
 
     import pyglet
+    print("opening window")
     window = pyglet.window.Window(resizable=True)
+    print(`window`)
     from time import time
     stime = time()
     imgcnt = ghostcnt = maskcnt = blendcnt = 0
